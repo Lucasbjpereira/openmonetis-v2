@@ -4,6 +4,8 @@ import { createAiServiceApp } from "./app";
 import { createAntigravityProvider } from "./providers/antigravity";
 import { createClaudeProvider } from "./providers/claude";
 import { createCodexProvider } from "./providers/codex";
+import { createMinimaxProvider } from "./providers/minimax";
+import { createOpencodeProvider } from "./providers/opencode";
 import type { CommandSource, ProviderAdapter } from "./providers/provider";
 import { createToolManager } from "./tools/manager";
 import { createToolSources, currentToolPlatform } from "./tools/sources";
@@ -23,11 +25,17 @@ const bundled = {
   claude: process.env.CLAUDE_BIN || "claude",
   codex: process.env.CODEX_BIN || "codex",
   antigravity: process.env.ANTIGRAVITY_BIN || "agy",
+  // MiniMax and OpenCode have no CLI of their own: the OpenCode CLI is the harness, pointed at
+  // MiniMax's OpenAI-compatible endpoint or at the person's own OpenCode account.
+  minimax: process.env.MINIMAX_BIN || "opencode",
+  opencode: process.env.OPENCODE_BIN || "opencode",
 } as const;
 const adapterFactories = {
   claude: createClaudeProvider,
   codex: createCodexProvider,
   antigravity: createAntigravityProvider,
+  minimax: createMinimaxProvider,
+  opencode: createOpencodeProvider,
 } satisfies Record<AiProvider, (command: CommandSource) => ProviderAdapter>;
 const platform = currentToolPlatform();
 const tools = platform

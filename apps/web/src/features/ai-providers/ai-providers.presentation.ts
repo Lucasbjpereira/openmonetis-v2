@@ -7,12 +7,25 @@ export const aiProviderLabels: Record<AiProvider, string> = {
   claude: "Claude",
   codex: "Codex",
   antigravity: "Antigravity",
+  minimax: "MiniMax",
+  opencode: "OpenCode",
 };
 
 export const aiProviderPlanDescriptions: Record<AiProvider, string> = {
   claude: "Use sua assinatura Claude Pro ou Max.",
   codex: "Use sua assinatura ChatGPT Plus, Pro ou Business.",
   antigravity: "Use sua conta Google com Antigravity.",
+  minimax: "Use sua chave da API MiniMax.",
+  opencode: "Use sua conta OpenCode.",
+};
+
+/** What the person pastes to connect a provider that takes a key instead of a browser sign-in. */
+export const aiProviderCredentialLabels: Record<AiProvider, string> = {
+  claude: "Código do login",
+  codex: "Código do login",
+  antigravity: "Código do login",
+  minimax: "Chave da API",
+  opencode: "Credenciais do OpenCode",
 };
 
 export const aiProviderStatusLabels: Record<AiProviderStatus, string> = {
@@ -55,6 +68,11 @@ export const aiProviderLogos: Record<AiProvider, { light: string; dark: string }
   antigravity: {
     light: "/images/ai-providers/antigravity.png",
     dark: "/images/ai-providers/antigravity.png",
+  },
+  minimax: { light: "/images/ai-providers/minimax.svg", dark: "/images/ai-providers/minimax.svg" },
+  opencode: {
+    light: "/images/ai-providers/opencode.svg",
+    dark: "/images/ai-providers/opencode.svg",
   },
 };
 

@@ -118,6 +118,8 @@ export const aiDiagnosisExpectedDurations: Record<
   claude: { label: "de 15 segundos a 2 minutos", slowAfterSeconds: 120 },
   codex: { label: "de 15 segundos a 2 minutos", slowAfterSeconds: 120 },
   antigravity: { label: "de 1 a 4 minutos", slowAfterSeconds: 240 },
+  minimax: { label: "de 15 segundos a 2 minutos", slowAfterSeconds: 120 },
+  opencode: { label: "de 15 segundos a 2 minutos", slowAfterSeconds: 120 },
 };
 
 export function formatElapsedTime(seconds: number) {

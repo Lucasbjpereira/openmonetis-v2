@@ -83,7 +83,7 @@ test("a disabled installation lists every provider as disconnected without calli
   assert.equal(result.enabled, false);
   assert.deepEqual(
     result.items.map((item) => item.status),
-    ["disconnected", "disconnected", "disconnected"],
+    ["disconnected", "disconnected", "disconnected", "disconnected", "disconnected"],
   );
   await assert.rejects(
     service.startLogin(userId, "claude", { acceptDataSharing: true }),
@@ -126,6 +126,22 @@ test("starting a sign-in records consent; connected providers list their models"
     },
     {
       provider: "antigravity",
+      status: "disconnected",
+      consentedAt: null,
+      preferredModel: null,
+      models: [],
+      accountEmail: null,
+    },
+    {
+      provider: "minimax",
+      status: "disconnected",
+      consentedAt: null,
+      preferredModel: null,
+      models: [],
+      accountEmail: null,
+    },
+    {
+      provider: "opencode",
       status: "disconnected",
       consentedAt: null,
       preferredModel: null,

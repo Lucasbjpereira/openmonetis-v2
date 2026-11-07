@@ -1,17 +1,20 @@
-export const aiProviders = ["claude", "codex", "antigravity"] as const;
+export const aiProviders = ["claude", "codex", "antigravity", "minimax", "opencode"] as const;
 export type AiProvider = (typeof aiProviders)[number];
 
 /**
  * How each vendor CLI completes its own sign-in. Claude and Antigravity show a page that hands back
- * a code the person pastes; Codex shows a one-time code the person types on the vendor's page.
+ * a code the person pastes; Codex shows a one-time code the person types on the vendor's page;
+ * MiniMax takes an API key and OpenCode the credentials its own CLI exports.
  */
-export const aiProviderLoginMethods = ["authorizationCode", "deviceCode"] as const;
+export const aiProviderLoginMethods = ["authorizationCode", "deviceCode", "apiKey"] as const;
 export type AiProviderLoginMethod = (typeof aiProviderLoginMethods)[number];
 
 export const aiProviderLoginMethodByProvider = {
   claude: "authorizationCode",
   codex: "deviceCode",
   antigravity: "authorizationCode",
+  minimax: "apiKey",
+  opencode: "apiKey",
 } as const satisfies Record<AiProvider, AiProviderLoginMethod>;
 
 export const aiProviderLoginStatuses = ["pending", "connected", "failed", "expired"] as const;

@@ -3,6 +3,7 @@
 ARG NODE_VERSION=22.23.4
 ARG CLAUDE_CODE_VERSION=2.1.316
 ARG CODEX_VERSION=0.165.0
+ARG OPENCODE_VERSION=2.2.6
 # Antigravity CLI 1.4.12, from Google's release manifest; the SHA-512 it publishes was checked
 # before pinning these SHA-256 digests.
 ARG ANTIGRAVITY_CLI_RELEASE=1.4.12-4768735748292608
@@ -120,6 +121,7 @@ FROM node:${NODE_VERSION}-bookworm-slim AS ai
 
 ARG CLAUDE_CODE_VERSION
 ARG CODEX_VERSION
+ARG OPENCODE_VERSION
 
 ENV NODE_ENV=production
 ENV AI_PORT=7003
@@ -135,6 +137,7 @@ RUN apt-get update \
     && npm install --global --no-fund --no-audit \
       "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
       "@openai/codex@${CODEX_VERSION}" \
+      "@opencode/cli@${OPENCODE_VERSION}" \
     && npm cache clean --force \
     && mkdir -p /data/homes /data/tools \
     && chown -R node:node /data

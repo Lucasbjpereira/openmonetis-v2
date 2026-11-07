@@ -86,7 +86,13 @@ async function withManager(
     const { source, request } = await setup(root);
     const manager = createToolManager({
       directory: path.join(root, "tools"),
-      bundled: { claude: bundled, codex: "codex-missing", antigravity: "agy-missing" },
+      bundled: {
+        claude: bundled,
+        codex: "codex-missing",
+        antigravity: "agy-missing",
+        minimax: bundled,
+        opencode: bundled,
+      },
       sources: [source],
       createAdapter: (_provider, command) => {
         if (!adapter) throw new Error("no adapter");

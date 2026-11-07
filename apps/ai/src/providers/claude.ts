@@ -227,7 +227,7 @@ function usedModel(payload: ClaudeResult) {
   return id ? { id, name: formatClaudeModelName(id) } : null;
 }
 
-function parseClaudeResult(output: string): ClaudeResult | null {
+export function parseClaudeResult(output: string): ClaudeResult | null {
   try {
     const payload = JSON.parse(output) as unknown;
     return payload && typeof payload === "object" ? (payload as ClaudeResult) : null;

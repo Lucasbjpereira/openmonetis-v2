@@ -1,4 +1,5 @@
 import type { AiProvider } from "@openmonetis/domain/ai-providers";
+import { aiProviderLoginMethodByProvider } from "@openmonetis/domain/ai-providers";
 import {
   type AiProviderLoginOutput,
   SubmitAiProviderLoginCodeInputSchema,
@@ -35,6 +36,7 @@ import {
   useSubmitAiProviderLoginCodeMutation,
 } from "../ai-providers.mutations";
 import {
+  aiProviderCredentialLabels,
   aiProviderErrorMessage,
   aiProviderLabels,
   formatAiLoginTimeLeft,
@@ -54,6 +56,7 @@ export function AiProviderConnectDialog({
   onOpenChange,
 }: AiProviderConnectDialogProps) {
   const label = aiProviderLabels[provider];
+  const usesApiKey = aiProviderLoginMethodByProvider[provider] === "apiKey";
   const [startedLogin, setStartedLogin] = useState<AiProviderLoginOutput | null>(null);
   const startMutation = useStartAiProviderLoginMutation();
   const consentId = useId();
@@ -86,7 +89,9 @@ export function AiProviderConnectDialog({
           <DialogDescription className="flex items-start gap-1.5">
             <ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-success" />
             <span>
-              O login acontece na página oficial do {label}. O OpenMonetis nunca recebe sua senha.
+              {usesApiKey
+                ? `Cole a chave da API do ${label}. Ela fica guardada no seu próprio espaço no servidor e só é usada para chamar a API do ${label}.`
+                : `O login acontece na página oficial do ${label}. O OpenMonetis nunca recebe sua senha.`}
             </span>
           </DialogDescription>
         </DialogHeader>
@@ -212,17 +217,25 @@ function AiProviderLoginSteps({
     );
   }
 
+  const usesApiKey = login.method === "apiKey";
+  const credentialLabel = aiProviderCredentialLabels[login.provider];
   const signInStep = (
     <LoginStep
-      description="Use a conta da assinatura que vai gerar os diagnósticos."
+      description={
+        usesApiKey
+          ? `Abra o console do provedor e pegue ${credentialLabel.toLowerCase()}.`
+          : "Use a conta da assinatura que vai gerar os diagnósticos."
+      }
       number={1}
-      title={`Entre na sua conta do ${label}`}
+      title={
+        usesApiKey ? `Pegue ${credentialLabel.toLowerCase()}` : `Entre na sua conta do ${label}`
+      }
     >
       {login.verificationUrl ? (
         <Button asChild className="w-full sm:w-fit" variant="outline">
           <a href={login.verificationUrl} rel="noreferrer" target="_blank">
             <ExternalLink aria-hidden="true" />
-            Abrir login do {label}
+            {usesApiKey ? `Abrir console do ${label}` : `Abrir login do ${label}`}
           </a>
         </Button>
       ) : null}
@@ -232,7 +245,9 @@ function AiProviderLoginSteps({
   return (
     <div className="grid gap-5">
       <LoginTimeLeft expiresAt={login.expiresAt} />
-      {login.method === "authorizationCode" ? (
+      {usesApiKey ? (
+        <ApiKeyForm login={login} onCancel={onClose} signInStep={signInStep} />
+      ) : login.method === "authorizationCode" ? (
         <AuthorizationCodeForm login={login} onCancel={onClose} signInStep={signInStep} />
       ) : (
         <>
@@ -440,6 +455,132 @@ function AuthorizationCodeForm({
                 {field.state.meta.errors.length ? (
                   <p className="text-destructive text-sm" id={`${codeId}-error`} role="alert">
                     Cole o código do login.
+                  </p>
+                ) : null}
+              </div>
+            )}
+          </form.Field>
+        </LoginStep>
+      </ol>
+      <DialogFooter>
+        <Button
+          disabled={submitMutation.isPending}
+          onClick={onCancel}
+          type="button"
+          variant="outline"
+        >
+          Cancelar
+        </Button>
+        <form.Subscribe selector={(state) => state.isSubmitting}>
+          {(isSubmitting) => (
+            <Button disabled={isSubmitting} type="submit">
+              {isSubmitting ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : null}
+              {isSubmitting ? "Conectando…" : `Conectar ${label}`}
+            </Button>
+          )}
+        </form.Subscribe>
+      </DialogFooter>
+    </form>
+  );
+}
+
+/**
+ * A provider that takes an API key instead of a browser sign-in: the key is pasted here and
+ * checked by the provider before the connection is accepted.
+ */
+function ApiKeyForm({
+  login,
+  onCancel,
+  signInStep,
+}: {
+  login: AiProviderLoginOutput;
+  onCancel: () => void;
+  signInStep: ReactNode;
+}) {
+  const keyId = useId();
+  const label = aiProviderLabels[login.provider];
+  const credentialLabel = aiProviderCredentialLabels[login.provider];
+  const submitMutation = useSubmitAiProviderLoginCodeMutation();
+  const form = useForm({
+    defaultValues: { code: "" },
+    onSubmitInvalid: showInvalidFormToast,
+    validators: {
+      onSubmit: ({ value }) =>
+        SubmitAiProviderLoginCodeInputSchema.safeParse(value).success
+          ? undefined
+          : { fields: { code: `Cole ${credentialLabel.toLowerCase()}.` } },
+    },
+    onSubmit: async ({ value }) => {
+      try {
+        const result = await submitMutation.mutateAsync({
+          provider: login.provider,
+          loginId: login.loginId,
+          code: SubmitAiProviderLoginCodeInputSchema.parse(value).code,
+        });
+        if (result.status !== "connected") toast.error(`${credentialLabel} não foi aceita.`);
+      } catch (error) {
+        toast.error(aiProviderErrorMessage(error));
+      }
+    },
+  });
+
+  async function pasteKey(setCode: (code: string) => void) {
+    try {
+      setCode((await navigator.clipboard.readText()).trim());
+    } catch {
+      toast.error("Não foi possível colar. Cole manualmente.");
+    }
+  }
+
+  return (
+    <form
+      className="grid gap-5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
+      <ol className="grid">
+        {signInStep}
+        <LoginStep
+          description={`Cole ${credentialLabel.toLowerCase()}. Ela é conferida antes de conectar.`}
+          number={2}
+          title={`Cole ${credentialLabel.toLowerCase()}`}
+        >
+          <form.Field name="code">
+            {(field) => (
+              <div className="grid gap-2">
+                <Label className="sr-only" htmlFor={keyId}>
+                  {credentialLabel}
+                </Label>
+                <InputGroup>
+                  <InputGroupInput
+                    aria-describedby={field.state.meta.errors.length ? `${keyId}-error` : undefined}
+                    aria-invalid={field.state.meta.errors.length > 0}
+                    autoComplete="off"
+                    className="font-mono"
+                    disabled={submitMutation.isPending}
+                    id={keyId}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                    placeholder="Cole aqui"
+                    spellCheck={false}
+                    type="password"
+                    value={field.state.value}
+                  />
+                  <InputGroupAddon align="inline-end">
+                    <InputGroupButton
+                      disabled={submitMutation.isPending}
+                      onClick={() => void pasteKey(field.handleChange)}
+                    >
+                      <ClipboardPaste aria-hidden="true" />
+                      Colar
+                    </InputGroupButton>
+                  </InputGroupAddon>
+                </InputGroup>
+                {field.state.meta.errors.length ? (
+                  <p className="text-destructive text-sm" id={`${keyId}-error`} role="alert">
+                    Cole {credentialLabel.toLowerCase()}.
                   </p>
                 ) : null}
               </div>

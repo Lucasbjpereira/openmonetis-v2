@@ -145,7 +145,9 @@ export function createLoginSessions(now: () => Date = () => new Date()) {
     async submitCode(ownerKey: string, loginId: string, code: string) {
       const session = sessions.get(loginId);
       if (!session || session.ownerKey !== ownerKey) return null;
-      if (session.status !== "pending" || session.method !== "authorizationCode") {
+      // The code is what the person types back: the vendor's one-time code, or the API key a
+      // key-based provider asks for.
+      if (session.status !== "pending" || session.method === "deviceCode") {
         return snapshot(session);
       }
       session.child.stdin.write(`${code.trim()}\n`);
