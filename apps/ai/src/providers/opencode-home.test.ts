@@ -79,3 +79,15 @@ test("the sign-in helpers run with the provider's home", () => {
   assert.equal(createMinimaxProvider().loginCommand(home).env.HOME, home);
   assert.equal(createOpencodeProvider().loginCommand(home).env.HOME, home);
 });
+
+test("the sign-in helpers resolve the TypeScript loader, which the home cannot find", () => {
+  const home = "/data/homes/a-person/minimax";
+  for (const adapter of [createMinimaxProvider(), createOpencodeProvider()]) {
+    const args = adapter.loginCommand(home).args;
+    assert.equal(args[0], "--import");
+    // A bare "tsx" would be looked up from the provider's home, where the package does not exist.
+    assert.match(args[1], /^file:\/\/\/.+\.mjs$/);
+    assert.ok(args[2].endsWith("-login.ts"));
+    assert.equal(args[3], home);
+  }
+});

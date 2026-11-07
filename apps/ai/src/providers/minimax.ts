@@ -1,6 +1,7 @@
 import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { aiProviderLoginMethodByProvider } from "@openmonetis/domain/ai-providers";
+import { tsxLoaderUrl } from "../utils/tsx";
 import { opencodeBaseConfig, runOpencode } from "./opencode-cli";
 import {
   type CommandSource,
@@ -111,7 +112,7 @@ export function createMinimaxProvider(cli: CommandSource = "opencode"): Provider
     loginCommand(home) {
       return {
         command: process.execPath,
-        args: ["--import", "tsx", loginHelperPath(), home],
+        args: ["--import", tsxLoaderUrl, loginHelperPath(), home],
         env: { PATH: process.env.PATH ?? "", HOME: home },
       };
     },

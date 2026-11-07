@@ -3,6 +3,7 @@ import path from "node:path";
 import { aiProviderLoginMethodByProvider } from "@openmonetis/domain/ai-providers";
 import { createCliEnvironment } from "../utils/env";
 import { runCommand } from "../utils/process";
+import { tsxLoaderUrl } from "../utils/tsx";
 import { opencodeBaseConfig, runOpencode } from "./opencode-cli";
 import {
   type CommandSource,
@@ -94,7 +95,7 @@ export function createOpencodeProvider(cli: CommandSource = "opencode"): Provide
     loginCommand(home) {
       return {
         command: process.execPath,
-        args: ["--import", "tsx", loginHelperPath(), home],
+        args: ["--import", tsxLoaderUrl, loginHelperPath(), home],
         env: { PATH: process.env.PATH ?? "", HOME: home },
       };
     },
