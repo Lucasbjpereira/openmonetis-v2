@@ -41,6 +41,7 @@ export function opencodeConfig() {
 
 function cliEnvironment(home: string) {
   return createCliEnvironment({
+    HOME: home,
     OPENCODE_CONFIG: path.join(home, "opencode.json"),
     OPENCODE_DB: databasePath(home),
     OPENCODE_DISABLE_AUTOUPDATER: "1",
@@ -94,7 +95,7 @@ export function createOpencodeProvider(cli: CommandSource = "opencode"): Provide
       return {
         command: process.execPath,
         args: ["--import", "tsx", loginHelperPath(), home],
-        env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "/tmp" },
+        env: { PATH: process.env.PATH ?? "", HOME: home },
       };
     },
 

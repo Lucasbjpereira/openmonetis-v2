@@ -54,6 +54,7 @@ function importCredentials(home: string, credentials: string): Promise<boolean> 
     const child = spawn("opencode", ["--standalone", "auth", "import"], {
       env: {
         ...process.env,
+        HOME: home,
         OPENCODE_DB: path.join(home, "opencode.db"),
         OPENCODE_CONFIG: path.join(home, "opencode.json"),
       },

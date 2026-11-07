@@ -112,7 +112,7 @@ export function createMinimaxProvider(cli: CommandSource = "opencode"): Provider
       return {
         command: process.execPath,
         args: ["--import", "tsx", loginHelperPath(), home],
-        env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "/tmp" },
+        env: { PATH: process.env.PATH ?? "", HOME: home },
       };
     },
 

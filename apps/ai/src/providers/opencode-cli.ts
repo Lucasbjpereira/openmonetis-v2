@@ -94,6 +94,9 @@ export async function runOpencode(options: OpencodeRunOptions): Promise<Opencode
     {
       cwd: options.home,
       env: createCliEnvironment({
+        // The service runs with a read-only root filesystem, so the CLI has to keep its data
+        // (log, cache, state) inside the provider's own home, which is a writable volume.
+        HOME: options.home,
         OPENCODE_CONFIG: configPath,
         OPENCODE_DB: databasePath,
         OPENCODE_DISABLE_AUTOUPDATER: "1",
