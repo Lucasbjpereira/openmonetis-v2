@@ -1,9 +1,8 @@
-import { readFile, rm } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { aiProviderLoginMethodByProvider } from "@openmonetis/domain/ai-providers";
-import { createCliEnvironment } from "../utils/env";
-import { runCommand } from "../utils/process";
 import { tsxLoaderUrl } from "../utils/tsx";
+import { parseLoginFailure } from "./login-failure";
 import { opencodeBaseConfig, runOpencode } from "./opencode-cli";
 import {
   type CommandSource,
@@ -21,63 +20,171 @@ const chatTimeoutMs = 180_000;
 /** Printed by the sign-in helper so the dialog can show the link while the key is still waited for. */
 export const opencodeReadyMarker = "OPENCODE_LOGIN_READY";
 
-/** Where the console shows the personal access tokens. */
-export const opencodeConsoleUrl = "https://opencode.ai/auth";
+/** Where the console shows the service accounts and their keys. */
+export const opencodeConsoleUrl = "https://opencode.ai/console/service-accounts";
 
-const defaultModelId = "opencode-go/minimax-m3.1-flash";
+/** OpenCode's own gateway, which serves the models of the account that owns the key. */
+export const opencodeInferenceBaseUrl = "https://opencode.ai/inference";
 
-function databasePath(home: string) {
-  return path.join(home, "opencode.db");
+/** The OpenAI-compatible path of that gateway. */
+export const opencodeChatBaseUrl = `${opencodeInferenceBaseUrl}/openai/v1`;
+
+/** The catalog of models the gateway serves. */
+export const opencodeModelsUrl = `${opencodeInferenceBaseUrl}/v1/models`;
+
+const keyFileName = "opencode.key";
+const providerId = "opencode-console";
+
+/** The model the provider answers with unless the person picks another one. */
+const preferredModelId = "minimax-m3";
+
+type ConsoleModel = {
+  id: string;
+  name?: string;
+  limit?: { context?: number; output?: number };
+  api?: Record<string, { base_url?: string; sdk?: { aisdk?: string } }>;
+};
+
+export type OpencodeConsoleModel = {
+  id: string;
+  name: string;
+  context: number;
+  output: number;
+};
+
+function keyPath(home: string) {
+  return path.join(home, keyFileName);
+}
+
+/** The key is kept in the provider's own home, never in the environment of another provider. */
+export async function readOpencodeKey(home: string): Promise<string | null> {
+  try {
+    const key = (await readFile(keyPath(home), "utf8")).trim();
+    return key.length > 0 ? key : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeOpencodeKey(home: string, key: string) {
+  await writeFile(keyPath(home), `${key.trim()}\n`, { mode: 0o600 });
 }
 
 /**
- * The configuration the CLI runs with. The credentials come from the person's own OpenCode
- * account, imported into the database that lives in their home.
+ * The models the gateway serves through the OpenAI-compatible API, which is the protocol the CLI
+ * speaks here. The catalog is public, so it costs nothing to read.
  */
-export function opencodeConfig() {
+export async function readOpencodeCatalog(): Promise<OpencodeConsoleModel[]> {
+  try {
+    const response = await fetch(opencodeModelsUrl, {
+      signal: AbortSignal.timeout(statusTimeoutMs),
+    });
+    if (!response.ok) return [];
+    const body = (await response.json()) as { data?: ConsoleModel[] };
+    return (body.data ?? [])
+      .filter((model) => model.api?.["chat-completions"])
+      .map((model) => ({
+        id: model.id,
+        name: model.name ?? model.id,
+        context: model.limit?.context ?? 200_000,
+        output: model.limit?.output ?? 32_000,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function defaultModelOf(models: OpencodeConsoleModel[]): string {
+  const preferred = models.find((model) => model.id === preferredModelId);
+  return preferred?.id ?? models[0]?.id ?? preferredModelId;
+}
+
+/**
+ * Checks a service account key with a minimal completion, which is the only call that proves the
+ * key may both read the catalog and use the plan.
+ */
+export async function checkOpencodeKey(key: string): Promise<{ valid: boolean; reason: string | null }> {
+  const models = await readOpencodeCatalog();
+  const model = defaultModelOf(models);
+  try {
+    const response = await fetch(`${opencodeChatBaseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 16,
+        messages: [{ role: "user", content: "ping" }],
+      }),
+      signal: AbortSignal.timeout(statusTimeoutMs),
+    });
+    if (response.ok) return { valid: true, reason: null };
+    const detail = await response.text().catch(() => "");
+    return { valid: false, reason: explain(response.status, detail) };
+  } catch (error) {
+    return {
+      valid: false,
+      reason: `O OpenCode não respondeu: ${error instanceof Error ? error.message : "falha de rede"}`,
+    };
+  }
+}
+
+function explain(status: number, detail: string): string {
+  if (status === 401) {
+    return "O OpenCode recusou a chave. Use a chave de API de service account (oc_sk-...), criada em opencode.ai/console/service-accounts.";
+  }
+  if (status === 403) {
+    return "O OpenCode recusou a chave: a service account não tem permissão para chamar modelos (Models › Request).";
+  }
+  if (status === 402 || /balance|credit|quota|insufficient|billing|plan/i.test(detail)) {
+    return `O OpenCode recusou a chave: ${detail.slice(0, 300)}`;
+  }
+  return `O OpenCode recusou a chave (HTTP ${status}): ${detail.slice(0, 300)}`;
+}
+
+/** The configuration that points the CLI at the OpenCode gateway with the person's own key. */
+export function opencodeConfig(models: OpencodeConsoleModel[]) {
   return {
     ...opencodeBaseConfig(),
+    providers: {
+      [providerId]: {
+        name: "OpenCode",
+        package: "@ai-sdk/openai-compatible",
+        settings: {
+          baseURL: opencodeChatBaseUrl,
+          // The key stays in the environment of the command, never in the file on disk.
+          apiKey: "{env:OPENCODE_API_KEY}",
+        },
+        models: Object.fromEntries(
+          models.map((model) => [
+            model.id,
+            {
+              modelID: model.id,
+              name: model.name,
+              limit: { context: model.context, output: model.output },
+            },
+          ]),
+        ),
+      },
+    },
+    model: `${providerId}/${defaultModelOf(models)}`,
   };
 }
 
-function cliEnvironment(home: string) {
-  return createCliEnvironment({
-    HOME: home,
-    OPENCODE_CONFIG: path.join(home, "opencode.json"),
-    OPENCODE_DB: databasePath(home),
-    OPENCODE_DISABLE_AUTOUPDATER: "1",
-    OPENCODE_DISABLE_FILEWATCHER: "1",
-    OPENCODE_DISABLE_PROJECT_CONFIG: "1",
-  });
-}
-
-/** The models the person's own OpenCode account can use. */
-async function readOpencodeModels(command: string, home: string): Promise<ProviderModel[]> {
-  const result = await runCommand(command, ["--standalone", "models"], {
-    env: cliEnvironment(home),
-    timeoutMs: statusTimeoutMs,
-  });
-  if (result.exitCode !== 0) return [];
-  return result.stdout
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.includes("/"))
-    .filter((line) => line.startsWith("opencode-go/") || line.startsWith("opencode/"))
-    .slice(0, 60)
-    .map((line) => {
-      const id = line.split("#")[0];
-      const name = id.slice(id.indexOf("/") + 1);
-      return {
-        id,
-        name: name.replaceAll("-", " "),
-        isDefault: id === defaultModelId,
-      };
-    });
+function toProviderModels(models: OpencodeConsoleModel[]): ProviderModel[] {
+  const fallback = defaultModelOf(models);
+  return models.map((model) => ({
+    id: model.id,
+    name: model.name,
+    isDefault: model.id === fallback,
+  }));
 }
 
 /**
- * OpenCode, run with the person's own OpenCode account. The credentials are the ones the CLI
- * exports, so the person never types a password here.
+ * OpenCode, run with the person's own service account. The key is the one the console shows for
+ * a service account, so the models of the account are the ones the gateway serves.
  */
 export function createOpencodeProvider(cli: CommandSource = "opencode"): ProviderAdapter {
   return {
@@ -85,11 +192,10 @@ export function createOpencodeProvider(cli: CommandSource = "opencode"): Provide
     loginMethod: aiProviderLoginMethodByProvider.opencode,
 
     async readAccount(home) {
-      const result = await runCommand(commandOf(cli), ["--standalone", "auth", "list"], {
-        env: cliEnvironment(home),
-        timeoutMs: statusTimeoutMs,
-      });
-      return result.exitCode === 0 && result.stdout.includes("stored") ? { email: null } : null;
+      // The key was checked when it was pasted; checking it again on every listing would spend
+      // the plan's quota for nothing.
+      const key = await readOpencodeKey(home);
+      return key ? { email: null } : null;
     },
 
     loginCommand(home) {
@@ -105,22 +211,30 @@ export function createOpencodeProvider(cli: CommandSource = "opencode"): Provide
       return { verificationUrl: opencodeConsoleUrl, userCode: null };
     },
 
+    parseLoginFailure,
+
     async logout(home) {
-      await rm(databasePath(home), { force: true });
+      await rm(keyPath(home), { force: true });
     },
 
     async listModels(home) {
-      return readOpencodeModels(commandOf(cli), home);
+      const key = await readOpencodeKey(home);
+      if (!key) return [];
+      return toProviderModels(await readOpencodeCatalog());
     },
 
     async run(home, input) {
-      const model = input.model ?? defaultModelId;
+      const key = await readOpencodeKey(home);
+      if (!key) return { status: "failed", code: "providerDisconnected" };
+      const models = await readOpencodeCatalog();
+      const model = input.model ?? defaultModelOf(models);
       const result = await runOpencode({
         home,
         command: commandOf(cli),
-        config: opencodeConfig(),
-        model,
+        config: opencodeConfig(models),
+        model: `${providerId}/${model}`,
         prompt: buildPrompt(input.instructions, input.prompt, input.schema),
+        extraEnv: { OPENCODE_API_KEY: key },
         timeoutMs: runTimeoutMs,
         signal: input.signal,
       });
@@ -138,13 +252,17 @@ export function createOpencodeProvider(cli: CommandSource = "opencode"): Provide
     },
 
     async chat(home, input, emit) {
-      const model = input.model ?? defaultModelId;
+      const key = await readOpencodeKey(home);
+      if (!key) return { status: "failed", code: "providerDisconnected" };
+      const models = await readOpencodeCatalog();
+      const model = input.model ?? defaultModelOf(models);
       const result = await runOpencode({
         home,
         command: commandOf(cli),
-        config: opencodeConfig(),
-        model,
+        config: opencodeConfig(models),
+        model: `${providerId}/${model}`,
         prompt: input.prompt,
+        extraEnv: { OPENCODE_API_KEY: key },
         timeoutMs: chatTimeoutMs,
         signal: input.signal,
         onText: (text) => emit({ type: "delta", text }),
@@ -177,14 +295,4 @@ function failureCode(message: string) {
   if (message === "canceled") return "canceled" as const;
   if (message === "unsafe") return "runFailed" as const;
   return classifyRunFailure({ aborted: false, timedOut: false, stdout: "", stderr: message });
-}
-
-/** Reads the credentials the CLI exported, so the helper can import them. */
-export async function readOpencodeCredentials(home: string): Promise<string | null> {
-  try {
-    const value = (await readFile(path.join(home, "credentials.json"), "utf8")).trim();
-    return value.length > 0 ? value : null;
-  } catch {
-    return null;
-  }
 }

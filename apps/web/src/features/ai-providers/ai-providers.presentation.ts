@@ -15,17 +15,25 @@ export const aiProviderPlanDescriptions: Record<AiProvider, string> = {
   claude: "Use sua assinatura Claude Pro ou Max.",
   codex: "Use sua assinatura ChatGPT Plus, Pro ou Business.",
   antigravity: "Use sua conta Google com Antigravity.",
-  minimax: "Use sua chave da API MiniMax.",
-  opencode: "Use sua conta OpenCode.",
+  minimax: "Use a chave do seu M Plan.",
+  opencode: "Use a chave da sua service account.",
 };
 
 /** What the person pastes to connect a provider that takes a key instead of a browser sign-in. */
 export const aiProviderCredentialLabels: Record<AiProvider, string> = {
-  claude: "Código do login",
-  codex: "Código do login",
-  antigravity: "Código do login",
-  minimax: "Chave da API",
-  opencode: "Credenciais do OpenCode",
+  claude: "código do login",
+  codex: "código do login",
+  antigravity: "código do login",
+  minimax: "chave da API do M Plan",
+  opencode: "chave da API da service account",
+};
+
+/** Where each key comes from, so nobody pastes the wrong one. */
+export const aiProviderApiKeyHints: Partial<Record<AiProvider, string>> = {
+  minimax:
+    "Cole a chave do M Plan (começa com sk-cp-...). Ela fica guardada no seu próprio espaço no servidor e só é usada para chamar a API do MiniMax.",
+  opencode:
+    "Cole a chave da service account do OpenCode (começa com oc_sk_...). Ela fica guardada no seu próprio espaço no servidor e só é usada para chamar a API do OpenCode.",
 };
 
 export const aiProviderStatusLabels: Record<AiProviderStatus, string> = {

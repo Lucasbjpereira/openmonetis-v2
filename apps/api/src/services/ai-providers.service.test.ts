@@ -58,6 +58,7 @@ function createGateway(overrides: Partial<AiProvidersGateway> = {}): AiProviders
       status: "pending",
       verificationUrl: "https://auth.openai.com/codex/device",
       userCode: "ABCD-1234",
+      message: null,
       expiresAt: consentedAt.toISOString(),
     }),
     getLogin: async () => null,

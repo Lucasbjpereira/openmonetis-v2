@@ -4,7 +4,7 @@ export type AiProvider = (typeof aiProviders)[number];
 /**
  * How each vendor CLI completes its own sign-in. Claude and Antigravity show a page that hands back
  * a code the person pastes; Codex shows a one-time code the person types on the vendor's page;
- * MiniMax takes an API key and OpenCode the credentials its own CLI exports.
+ * MiniMax takes the key of its M Plan and OpenCode the key of its own service account.
  */
 export const aiProviderLoginMethods = ["authorizationCode", "deviceCode", "apiKey"] as const;
 export type AiProviderLoginMethod = (typeof aiProviderLoginMethods)[number];

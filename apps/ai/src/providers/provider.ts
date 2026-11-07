@@ -72,6 +72,11 @@ export type ProviderAdapter = {
   readAccount(home: string): Promise<ProviderAccount | null>;
   loginCommand(home: string): LoginCommand;
   parseLoginPrompt(output: string): LoginPrompt | null;
+  /**
+   * Why the sign-in failed, read from what the helper printed. It is shown to the person, so it
+   * must explain the cause without ever repeating the secret that was pasted.
+   */
+  parseLoginFailure?(output: string): string | null;
   logout(home: string): Promise<void>;
   listModels(home: string): Promise<ProviderModel[]>;
   run(home: string, input: RunInput): Promise<RunResult>;

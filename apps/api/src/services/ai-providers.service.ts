@@ -22,6 +22,8 @@ export type AiProviderLogin = {
   status: AiProviderLoginStatus;
   verificationUrl: string | null;
   userCode: string | null;
+  /** Why the sign-in failed, when the AI service could tell. */
+  message: string | null;
   expiresAt: string;
 };
 

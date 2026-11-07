@@ -81,6 +81,8 @@ export const AiProviderLoginOutputSchema = z
     status: z.enum(aiProviderLoginStatuses),
     verificationUrl: z.url().nullable(),
     userCode: z.string().nullable(),
+    /** Why the sign-in failed, when the provider could tell. */
+    message: z.string().nullable(),
     expiresAt: z.iso.datetime(),
   })
   .openapi("AiProviderLogin");

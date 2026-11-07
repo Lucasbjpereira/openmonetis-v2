@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { createInterface } from "node:readline";
-import { minimaxReadyMarker, validateMinimaxKey, writeMinimaxKey } from "./minimax";
+import { writeLoginFailure } from "./login-failure";
+import { checkMinimaxKey, minimaxReadyMarker, writeMinimaxKey } from "./minimax";
 
 /**
  * The MiniMax sign-in helper. The person pastes an API key; this reads it from the standard input,
@@ -20,11 +21,14 @@ async function main() {
   const key = await readLine();
   const trimmed = key?.trim() ?? "";
   if (!trimmed) {
+    writeLoginFailure("Nenhuma chave foi colada.");
     process.stderr.write("minimax login: empty key\n");
     process.exit(1);
   }
 
-  if (!(await validateMinimaxKey(trimmed))) {
+  const check = await checkMinimaxKey(trimmed);
+  if (!check.valid) {
+    writeLoginFailure(check.reason ?? "O MiniMax recusou a chave.");
     process.stderr.write("minimax login: key refused\n");
     process.exit(1);
   }
@@ -47,8 +51,8 @@ function readLine(): Promise<string | null> {
 }
 
 void main().catch((error: unknown) => {
-  process.stderr.write(
-    `minimax login: ${error instanceof Error ? error.message : String(error)}\n`,
-  );
+  const message = error instanceof Error ? error.message : String(error);
+  writeLoginFailure(`Falha ao falar com o MiniMax: ${message}`);
+  process.stderr.write(`minimax login: ${message}\n`);
   process.exit(2);
 });

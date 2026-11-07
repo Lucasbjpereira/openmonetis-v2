@@ -17,6 +17,8 @@ export type LoginSnapshot = {
   status: AiProviderLoginStatus;
   verificationUrl: string | null;
   userCode: string | null;
+  /** Why the sign-in failed, when the helper could tell. */
+  message: string | null;
   expiresAt: string;
 };
 
@@ -42,6 +44,7 @@ export function createLoginSessions(now: () => Date = () => new Date()) {
       status: session.status,
       verificationUrl: session.status === "pending" ? session.verificationUrl : null,
       userCode: session.status === "pending" ? session.userCode : null,
+      message: session.status === "pending" ? null : session.message,
       expiresAt: session.expiresAt.toISOString(),
     };
   }
@@ -87,6 +90,7 @@ export function createLoginSessions(now: () => Date = () => new Date()) {
         status: "pending",
         verificationUrl: null,
         userCode: null,
+        message: null,
         expiresAt: new Date(now().getTime() + lifetimeMs),
         child,
         settled: new Promise<void>((resolve) => {
@@ -115,6 +119,8 @@ export function createLoginSessions(now: () => Date = () => new Date()) {
           session.userCode = prompt.userCode;
           resolvePrompt();
         }
+        const failure = adapter.parseLoginFailure?.(output);
+        if (failure) session.message = failure;
       };
       child.stdout.on("data", readOutput);
       child.stderr.on("data", readOutput);

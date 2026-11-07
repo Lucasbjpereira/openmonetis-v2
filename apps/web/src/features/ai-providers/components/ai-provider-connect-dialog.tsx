@@ -36,6 +36,7 @@ import {
   useSubmitAiProviderLoginCodeMutation,
 } from "../ai-providers.mutations";
 import {
+  aiProviderApiKeyHints,
   aiProviderCredentialLabels,
   aiProviderErrorMessage,
   aiProviderLabels,
@@ -90,7 +91,8 @@ export function AiProviderConnectDialog({
             <ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-success" />
             <span>
               {usesApiKey
-                ? `Cole a chave da API do ${label}. Ela fica guardada no seu próprio espaço no servidor e só é usada para chamar a API do ${label}.`
+                ? (aiProviderApiKeyHints[provider] ??
+                  `Cole a chave da API do ${label}. Ela fica guardada no seu próprio espaço no servidor e só é usada para chamar a API do ${label}.`)
                 : `O login acontece na página oficial do ${label}. O OpenMonetis nunca recebe sua senha.`}
             </span>
           </DialogDescription>
@@ -203,7 +205,7 @@ function AiProviderLoginSteps({
         <p className="text-sm" role="alert">
           {login.status === "expired"
             ? "O login expirou antes de ser concluído."
-            : "Não foi possível concluir o login."}
+            : (login.message ?? "Não foi possível concluir o login.")}
         </p>
         <DialogFooter>
           <Button onClick={onClose} type="button" variant="outline">
@@ -223,12 +225,12 @@ function AiProviderLoginSteps({
     <LoginStep
       description={
         usesApiKey
-          ? `Abra o console do provedor e pegue ${credentialLabel.toLowerCase()}.`
+          ? `Abra o console do provedor e pegue a ${credentialLabel}.`
           : "Use a conta da assinatura que vai gerar os diagnósticos."
       }
       number={1}
       title={
-        usesApiKey ? `Pegue ${credentialLabel.toLowerCase()}` : `Entre na sua conta do ${label}`
+        usesApiKey ? `Pegue a ${credentialLabel}` : `Entre na sua conta do ${label}`
       }
     >
       {login.verificationUrl ? (
@@ -508,7 +510,7 @@ function ApiKeyForm({
       onSubmit: ({ value }) =>
         SubmitAiProviderLoginCodeInputSchema.safeParse(value).success
           ? undefined
-          : { fields: { code: `Cole ${credentialLabel.toLowerCase()}.` } },
+          : { fields: { code: `Cole a ${credentialLabel}.` } },
     },
     onSubmit: async ({ value }) => {
       try {
@@ -517,7 +519,7 @@ function ApiKeyForm({
           loginId: login.loginId,
           code: SubmitAiProviderLoginCodeInputSchema.parse(value).code,
         });
-        if (result.status !== "connected") toast.error(`${credentialLabel} não foi aceita.`);
+        if (result.status !== "connected") toast.error(`A ${credentialLabel} não foi aceita.`);
       } catch (error) {
         toast.error(aiProviderErrorMessage(error));
       }

@@ -2,6 +2,7 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { aiProviderLoginMethodByProvider } from "@openmonetis/domain/ai-providers";
 import { tsxLoaderUrl } from "../utils/tsx";
+import { parseLoginFailure } from "./login-failure";
 import { opencodeBaseConfig, runOpencode } from "./opencode-cli";
 import {
   type CommandSource,
@@ -20,7 +21,7 @@ const chatTimeoutMs = 180_000;
 export const minimaxBaseUrl = "https://api.minimax.io/v1";
 
 /** Where the console shows the keys a person can copy. */
-export const minimaxConsoleUrl = "https://platform.minimax.io/console/api-key";
+export const minimaxConsoleUrl = "https://platform.minimax.io/console/plan";
 
 /** Printed by the sign-in helper so the dialog can show the link while the key is still waited for. */
 export const minimaxReadyMarker = "MINIMAX_LOGIN_READY";
@@ -54,20 +55,81 @@ export async function writeMinimaxKey(home: string, key: string) {
   await writeFile(keyPath(home), `${key.trim()}\n`, { mode: 0o600 });
 }
 
-/**
- * Checks a key against MiniMax without spending a generation. A key that is refused is reported
- * as such, so the person is told the key is wrong instead of failing on the first diagnosis.
- */
-export async function validateMinimaxKey(key: string): Promise<boolean> {
+type Probe = { ok: boolean; status: number; detail: string };
+
+/** Calls MiniMax and reports what it answered, without ever logging the key. */
+async function probe(url: string, key: string, init?: RequestInit): Promise<Probe> {
   try {
-    const response = await fetch(`${minimaxBaseUrl}/models`, {
-      headers: { Authorization: `Bearer ${key}` },
+    const response = await fetch(url, {
+      ...init,
+      headers: {
+        ...(init?.headers as Record<string, string> | undefined),
+        Authorization: `Bearer ${key}`,
+      },
       signal: AbortSignal.timeout(statusTimeoutMs),
     });
-    return response.ok;
-  } catch {
-    return false;
+    const body = await response.text().catch(() => "");
+    return { ok: response.ok, status: response.status, detail: describeBody(body) };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      detail: error instanceof Error ? error.message : "falha de rede",
+    };
   }
+}
+
+/** MiniMax answers with `{ error: { message } }`; anything else is shown as it came. */
+function describeBody(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: string }; message?: string };
+    const message = parsed.error?.message ?? parsed.message;
+    if (typeof message === "string" && message.trim()) return message.trim().slice(0, 300);
+  } catch {
+    // Not a JSON answer: the raw text is the best explanation available.
+  }
+  return body.trim().slice(0, 300);
+}
+
+/** Turns what MiniMax answered into something the person can act on. */
+function explain(failure: Probe): string {
+  const detail = failure.detail;
+  if (failure.status === 401 || /login fail|authorized_error/i.test(detail)) {
+    return "O MiniMax recusou a chave. Use a chave do M Plan (sk-cp-...), criada em platform.minimax.io/console/plan, e confira se o plano continua ativo.";
+  }
+  if (failure.status === 403) {
+    return "O MiniMax recusou a chave: este plano não tem permissão para a chave colada.";
+  }
+  if (/balance|credit|quota|insufficient|expire|subscription|plan/i.test(detail)) {
+    return `O MiniMax recusou a chave: ${detail}`;
+  }
+  if (failure.status === 0) return `O MiniMax não respondeu: ${detail}`;
+  return `O MiniMax recusou a chave (HTTP ${failure.status}): ${detail}`;
+}
+
+export type MinimaxKeyCheck = { valid: boolean; reason: string | null };
+
+/**
+ * Checks a key without keeping the conversation going.
+ *
+ * The catalog is tried first because it costs nothing, but a M Plan Subscription Key is not
+ * accepted there, so the key is also checked with the call the plan actually pays for: a minimal
+ * completion. When both refuse it, the answer says why.
+ */
+export async function checkMinimaxKey(key: string): Promise<MinimaxKeyCheck> {
+  const catalog = await probe(`${minimaxBaseUrl}/models`, key);
+  if (catalog.ok) return { valid: true, reason: null };
+  const completion = await probe(`${minimaxBaseUrl}/chat/completions`, key, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: defaultModelId,
+      max_tokens: 64,
+      messages: [{ role: "user", content: "ping" }],
+    }),
+  });
+  if (completion.ok) return { valid: true, reason: null };
+  return { valid: false, reason: explain(completion.status ? completion : catalog) };
 }
 
 /** The configuration that points the CLI at MiniMax with the person's own key. */
@@ -103,10 +165,10 @@ export function createMinimaxProvider(cli: CommandSource = "opencode"): Provider
     loginMethod: aiProviderLoginMethodByProvider.minimax,
 
     async readAccount(home) {
+      // The key was checked when it was pasted; checking it again on every listing would spend
+      // the plan's quota for nothing.
       const key = await readMinimaxKey(home);
-      if (!key) return null;
-      if (!(await validateMinimaxKey(key))) return null;
-      return { email: null };
+      return key ? { email: null } : null;
     },
 
     loginCommand(home) {
@@ -121,6 +183,8 @@ export function createMinimaxProvider(cli: CommandSource = "opencode"): Provider
       if (!output.includes(minimaxReadyMarker)) return null;
       return { verificationUrl: minimaxConsoleUrl, userCode: null };
     },
+
+    parseLoginFailure,
 
     async logout(home) {
       await rm(keyPath(home), { force: true });
