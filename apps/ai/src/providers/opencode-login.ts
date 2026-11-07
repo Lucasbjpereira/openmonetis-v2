@@ -1,5 +1,5 @@
 import { mkdir } from "node:fs/promises";
-import { createInterface } from "node:readline";
+import { readPastedKey } from "../utils/read-line";
 import { writeLoginFailure } from "./login-failure";
 import { checkOpencodeKey, opencodeReadyMarker, writeOpencodeKey } from "./opencode";
 
@@ -19,8 +19,7 @@ async function main() {
   await mkdir(home, { recursive: true, mode: 0o700 });
   process.stdout.write(`${opencodeReadyMarker}\n`);
 
-  const key = await readLine();
-  const trimmed = key?.trim() ?? "";
+  const trimmed = await readPastedKey();
   if (!trimmed) {
     writeLoginFailure("Nenhuma chave foi colada.");
     process.stderr.write("opencode login: empty key\n");
@@ -37,18 +36,6 @@ async function main() {
   await writeOpencodeKey(home, trimmed);
   process.stdout.write("opencode login: key accepted\n");
   process.exit(0);
-}
-
-/** One line from the standard input, which is where the pasted key arrives. */
-function readLine(): Promise<string | null> {
-  return new Promise((resolve) => {
-    const reader = createInterface({ input: process.stdin });
-    reader.once("line", (line) => {
-      reader.close();
-      resolve(line);
-    });
-    reader.once("close", () => resolve(null));
-  });
 }
 
 void main().catch((error: unknown) => {
