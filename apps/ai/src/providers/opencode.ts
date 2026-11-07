@@ -52,6 +52,9 @@ export type OpencodeConsoleModel = {
   output: number;
 };
 
+const catalogLifetimeMs = 10 * 60_000;
+let catalogCache: { models: OpencodeConsoleModel[]; expiresAt: number } | null = null;
+
 function keyPath(home: string) {
   return path.join(home, keyFileName);
 }
@@ -72,16 +75,19 @@ export async function writeOpencodeKey(home: string, key: string) {
 
 /**
  * The models the gateway serves through the OpenAI-compatible API, which is the protocol the CLI
- * speaks here. The catalog is public, so it costs nothing to read.
+ * speaks here. The catalog is public, so it costs nothing to read, but it is big: it is kept for a
+ * while instead of being downloaded on every call.
  */
 export async function readOpencodeCatalog(): Promise<OpencodeConsoleModel[]> {
+  const cached = catalogCache;
+  if (cached && cached.expiresAt > Date.now()) return cached.models;
   try {
     const response = await fetch(opencodeModelsUrl, {
       signal: AbortSignal.timeout(statusTimeoutMs),
     });
     if (!response.ok) return [];
     const body = (await response.json()) as { data?: ConsoleModel[] };
-    return (body.data ?? [])
+    const models = (body.data ?? [])
       .filter((model) => model.api?.["chat-completions"])
       .map((model) => ({
         id: model.id,
@@ -89,9 +95,18 @@ export async function readOpencodeCatalog(): Promise<OpencodeConsoleModel[]> {
         context: model.limit?.context ?? 200_000,
         output: model.limit?.output ?? 32_000,
       }));
+    catalogCache = { models, expiresAt: Date.now() + catalogLifetimeMs };
+    return models;
   } catch {
     return [];
   }
+}
+
+/** Even when the catalog could not be read, the model the provider answers with must be there. */
+function catalogOrFallback(models: OpencodeConsoleModel[]): OpencodeConsoleModel[] {
+  return models.length > 0
+    ? models
+    : [{ id: preferredModelId, name: preferredModelId, context: 200_000, output: 32_000 }];
 }
 
 function defaultModelOf(models: OpencodeConsoleModel[]): string {
@@ -146,6 +161,7 @@ function explain(status: number, detail: string): string {
 
 /** The configuration that points the CLI at the OpenCode gateway with the person's own key. */
 export function opencodeConfig(models: OpencodeConsoleModel[]) {
+  const known = catalogOrFallback(models);
   return {
     ...opencodeBaseConfig(),
     providers: {
@@ -158,7 +174,7 @@ export function opencodeConfig(models: OpencodeConsoleModel[]) {
           apiKey: "{env:OPENCODE_API_KEY}",
         },
         models: Object.fromEntries(
-          models.map((model) => [
+          known.map((model) => [
             model.id,
             {
               modelID: model.id,
@@ -169,7 +185,7 @@ export function opencodeConfig(models: OpencodeConsoleModel[]) {
         ),
       },
     },
-    model: `${providerId}/${defaultModelOf(models)}`,
+    model: `${providerId}/${defaultModelOf(known)}`,
   };
 }
 
@@ -226,7 +242,7 @@ export function createOpencodeProvider(cli: CommandSource = "opencode"): Provide
     async run(home, input) {
       const key = await readOpencodeKey(home);
       if (!key) return { status: "failed", code: "providerDisconnected" };
-      const models = await readOpencodeCatalog();
+      const models = catalogOrFallback(await readOpencodeCatalog());
       const model = input.model ?? defaultModelOf(models);
       const result = await runOpencode({
         home,
@@ -254,7 +270,7 @@ export function createOpencodeProvider(cli: CommandSource = "opencode"): Provide
     async chat(home, input, emit) {
       const key = await readOpencodeKey(home);
       if (!key) return { status: "failed", code: "providerDisconnected" };
-      const models = await readOpencodeCatalog();
+      const models = catalogOrFallback(await readOpencodeCatalog());
       const model = input.model ?? defaultModelOf(models);
       const result = await runOpencode({
         home,
